@@ -18,7 +18,7 @@ library(data.table)
                        "critical", "score", "grade", "inspection_type")
   
   #Make INSPECTION DATE a date object called inspection_date 
-  all_data[all_data$inspection_date == "1/1/00",4] <- "1/1/1900"
+  #all_data[all_data$inspection_date == "1/1/00",4] <- "1/1/1900"
   all_data$inspection_date <- mdy(all_data$inspection_date)
   str(all_data$inspection_date)
   
@@ -60,7 +60,7 @@ all_data <- all_data %>%
 
   #remove rows without a score or with a negative score
   all_data <- all_data[!is.na(all_data$score),]
-  all_data <- filter(all_data, score > 0)
+  all_data <- filter(all_data, score >= 0)
   
   #Some restaurants received different scores for the same inspection on the same day; 
   #replace all scores for any inspection for a given restaurant on a given day by the 
@@ -74,7 +74,7 @@ all_data <- all_data %>%
     ids <-all_data %>%
       group_by(uid) %>%
       summarise(distinctscores = n_distinct(score)) %>%
-      filter(distinctscores>1) %>%
+      filter(distinctscores > 1) %>%
       select(uid)
     
     #get duplicates data
@@ -83,23 +83,24 @@ all_data <- all_data %>%
       arrange(uid)
     
     #assign max score
-    duplicates$score <- ifelse(duplicates$score < max(duplicates$score), max(duplicates$score), 
-                             duplicates$score)
+    duplicates <- duplicates %>% group_by(uid) %>% mutate(score = max(score))
     
     #put in new scores into dataset
-    all_data$score <- ifelse(is.element(all_data$uid, duplicates$uid), duplicates$score, 
-                             all_data$score)
+    all_data <- all_data %>% arrange(uid)
+    all_data[all_data$uid %in% duplicates$uid, ]$score <- duplicates$score
   
+    #remove extra tibbles
     rm(duplicates, ids)
+
 
 ## B- Create the sample of data that you will use for prediction as a tibble called 
 ## restaurant_data. We will restrict our attention to all initial cycle inspections that took
 ## place in 2015, 2016, 2017 
  
-    ATEST <- filter(all_data, id == 50064785)
+    ATEST <- filter(all_data, id == 30112340)
     #in our case, those inspection_type with .II indicates initial inspection 
     #In other words, filter on initial inspections
-    ATEST <- filter(ATEST,grepl(pattern = ".II$",ATEST$inspection_type))
+    ATEST <- filter(ATEST, grepl(pattern = ".II$", ATEST$inspection_type))
     
     #filter on years 2015, 2016, 2017 
     ATEST <- filter(ATEST, inspection_year %in% c(2015, 2016, 2017))

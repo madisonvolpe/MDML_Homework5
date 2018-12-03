@@ -17,7 +17,7 @@ sqf <- sqf %>%
          additional.evasive, additional.highcrime, additional.investigation, additional.report,
          additional.proximity, additional.other, additional.time, additional.sights,
          suspect.age, suspect.build, suspect.sex, suspect.height, suspect.weight,
-         inside, radio.run, officer.uniform,stop.length,day, month, time.period)
+         inside, radio.run, officer.uniform, stop.length, day, month, time.period)
 
 #Hint 2 
 # randomForest likes variables to be factors, so convert them if necessary. 
