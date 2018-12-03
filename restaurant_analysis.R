@@ -96,7 +96,8 @@ all_data <- all_data %>%
 ## B- Create the sample of data that you will use for prediction as a tibble called 
 ## restaurant_data. We will restrict our attention to all initial cycle inspections that took
 ## place in 2015, 2016, 2017 
- 
+
+    #### TEST OF PROCEDURE TO CREATE restaurant_data ####
     ATEST <- filter(all_data, id == 30112340)
     #in our case, those inspection_type with .II indicates initial inspection 
     #In other words, filter on initial inspections
@@ -117,16 +118,20 @@ all_data <- all_data %>%
     #cuisine, outcome, and inspection_year.
     ATEST <- select(ATEST, borough, cuisine, outcome, inspection_year)
    
+    #clean up
+    rm(ATEST)
+    
+    #### ACTUAL CREATION OF restaurant_data ####
     #in our case, those inspection_type with .II indicates initial inspection 
     #In other words, filter on initial inspections
-    restaurant_data <- filter(all_data,grepl(pattern = ".II$",all_data$inspection_type))
+    restaurant_data <- filter(all_data, grepl(pattern = ".II$", all_data$inspection_type))
     
     #filter on years 2015, 2016, 2017 
     restaurant_data <- filter(restaurant_data, inspection_year %in% c(2015, 2016, 2017))
     
     #only want one row for each unique initial inspection, can use uid column to remove
     #duplicates
-    restaurant_data <- restaurant_data[!duplicated(restaurant_data$uid),]
+    restaurant_data <- restaurant_data[!duplicated(restaurant_data$uid), ]
     length(unique(restaurant_data$uid)) == nrow(restaurant_data)
     
     #a.Create a binary outcome variable called ‘outcome’, 
@@ -136,8 +141,9 @@ all_data <- all_data %>%
     #b.For each initial cycle inspection, just keep the following features: borough, 
     #cuisine, outcome, and inspection_year.
     #side note we need to keep in id for the merge to work!!!! 
-    restaurant_data <- select(restaurant_data, id, borough, cuisine, outcome, inspection_date, inspection_year) 
-    rm(ATEST)
+    restaurant_data <- select(restaurant_data, id, borough, cuisine, 
+                              outcome, inspection_date, inspection_year) 
+    
     
 ## C Perform some feature engineering.We will only create features that could be known before
 ## a given initial cycle inspection takes place. 
@@ -148,54 +154,91 @@ all_data <- all_data %>%
       
     #b. Add four features constructed from historical inspection records:
       all_data_res <- select(all_data, id, score, action, inspection_date)
-      historical <-   merge(x= restaurant_data, y= all_data_res, by = "id")
+      historical <-   merge(x = restaurant_data, y = all_data_res, by = "id", 
+                            all.x = T, allow.cartesian = T)
     
       #looking at historical investigations
       historical <- filter(historical, inspection_date.y < inspection_date.x)
       sum(historical$inspection_date.y < historical$inspection_date.x)
     
       #drop inspection.x date from historical
-      historical <- historical[-5]
+      #historical <- historical[-5]
     
-      #create uid for historical 
-      historical$uid <- paste(historical$id, historical$inspection_date.y)
-  
-      #The number of previous inspections with score < 14 
-      low <- historical %>%
-        filter(score < 14) %>%
-        group_by(id) %>%
-        summarise(count = n_distinct(uid))
-   
-      restaurant_data$num_previous_low_inspections <-low$count[match(restaurant_data$id, 
-                                                                     low$id)]
+      #create uid for historical and restaurant_data 
+      historical$uid <- paste(historical$id, historical$inspection_date.x)
+      restaurant_data$uid <- paste(restaurant_data$id, restaurant_data$inspection_date)
       
-      #The number of previous inspections with score >= 14 and < 28
-      medium <- historical %>%
-        filter(score >=14 & score < 28) %>%
-        group_by(id) %>%
-        summarise(count = n_distinct(uid))
+
+      # create low, medium, and high counts and closings counts
+       low <- historical %>% 
+         filter(score < 14) %>% 
+         group_by(uid) %>% 
+         count() %>% 
+         rename('num_previous_low_inspections' = 'n')
+
+       med <- historical %>% 
+         filter(score >= 14 & score < 28) %>% 
+         group_by(uid) %>% 
+         count() %>% 
+         rename('num_previous_med_inspections' = 'n')
+
+       high <- historical %>% 
+         filter(score >= 28) %>% 
+         group_by(uid) %>% 
+         count() %>% 
+         rename('num_previous_high_inspections' = 'n')
+       
+       closings <- historical %>% 
+         filter(action %in% c('closed', 're_closed')) %>% 
+         group_by(uid) %>% 
+         count() %>% 
+         rename('num_previous_closings' = 'n')
+       
+       
+       
+       #merge all into restaurant_data
+       restaurant_data <- 
+         merge(x = restaurant_data, y = low, by = "uid", all.x = T) %>% 
+         merge(y = med, by = "uid", all.x = T) %>% 
+         merge(y = high, by = "uid", all.x = T) %>% 
+         merge(y = closings, by = "uid", all.x = T)
       
-      restaurant_data$num_previous_med_inspections <-medium$count[match(restaurant_data$id, 
-                                                                     medium$id)]
-    
-      #The number of previous inspections with score >= 28
-      high <- historical %>%
-        filter(score >= 28) %>%
-        group_by(id) %>%
-        summarise(count = n_distinct(uid))
-     
-      restaurant_data$num_previous_high_inspections <-high$count[match(restaurant_data$id, 
-                                                                        high$id)]
-      
-      #The number of previous inspections which resulted in closing or re-closing 
-      #(call this num_previous_closings)
-      closings <-historical %>%
-        filter(action %in% c("closed", "re_closed")) %>%
-        group_by(id) %>%
-        summarise(count = n_distinct(uid))
-      
-      restaurant_data$num_previous_closings <-closings$count[match(restaurant_data$id, 
-                                                                       closings$id)]
+      # #The number of previous inspections with score < 14      
+      # low <- historical %>%
+      #   filter(score < 14) %>%
+      #   group_by(id) %>%
+      #   summarise(count = n_distinct(uid))
+      # 
+      # restaurant_data$num_previous_low_inspections <-low$count[match(restaurant_data$id, 
+      #                                                                low$id)]
+      # 
+      # #The number of previous inspections with score >= 14 and < 28
+      # medium <- historical %>%
+      #   filter(score >=14 & score < 28) %>%
+      #   group_by(id) %>%
+      #   summarise(count = n_distinct(uid))
+      # 
+      # restaurant_data$num_previous_med_inspections <-medium$count[match(restaurant_data$id, 
+      #                                                                medium$id)]
+      # 
+      # #The number of previous inspections with score >= 28
+      # high <- historical %>%
+      #   filter(score >= 28) %>%
+      #   group_by(id) %>%
+      #   summarise(count = n_distinct(uid))
+      # 
+      # restaurant_data$num_previous_high_inspections <-high$count[match(restaurant_data$id, 
+      #                                                                   high$id)]
+      # 
+      # #The number of previous inspections which resulted in closing or re-closing 
+      # #(call this num_previous_closings)
+      # closings <-historical %>%
+      #   filter(action %in% c("closed", "re_closed")) %>%
+      #   group_by(id) %>%
+      #   summarise(count = n_distinct(uid))
+      # 
+      # restaurant_data$num_previous_closings <-closings$count[match(restaurant_data$id, 
+      #                                                                  closings$id)]
     
       #Hint: Make sure to replace NA values with zeros for the historical features for 
       #restaurants that have no prior inspections.
@@ -212,7 +255,8 @@ all_data <- all_data %>%
       restaurant_data <- filter(restaurant_data, cuisine %in% top50$cuisine)
       
       length(unique(restaurant_data$cuisine))
-    
+      
+    #clean up
     rm(all_data_res, closings, high, historical, low, medium, top50)
 
 ## Create a training set of all initial cycle inspections in 2015 and 2016 (train),and
