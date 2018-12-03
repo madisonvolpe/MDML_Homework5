@@ -173,26 +173,22 @@ all_data <- all_data %>%
        low <- historical %>% 
          filter(score < 14) %>% 
          group_by(uid) %>% 
-         count() %>% 
-         rename('num_previous_low_inspections' = 'n')
+         summarise('num_previous_low_inspections' = n())
 
        med <- historical %>% 
          filter(score >= 14 & score < 28) %>% 
          group_by(uid) %>% 
-         count() %>% 
-         rename('num_previous_med_inspections' = 'n')
+         summarise('num_previous_med_inspections' = n())
 
        high <- historical %>% 
          filter(score >= 28) %>% 
          group_by(uid) %>% 
-         count() %>% 
-         rename('num_previous_high_inspections' = 'n')
+         summarise('num_previous_high_inspections' = n())
        
        closings <- historical %>% 
          filter(action %in% c('closed', 're_closed')) %>% 
          group_by(uid) %>% 
-         count() %>% 
-         rename('num_previous_closings' = 'n')
+         summarise('num_previous_closings' = n())
        
        
        
