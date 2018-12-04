@@ -173,22 +173,22 @@ all_data <- all_data %>%
        low <- historical %>% 
          filter(score < 14) %>% 
          group_by(uid) %>% 
-         summarise('num_previous_low_inspections' = n())
+         summarise('num_previous_low_inspections' = n_distinct(inspection_date.y))
 
        med <- historical %>% 
          filter(score >= 14 & score < 28) %>% 
          group_by(uid) %>% 
-         summarise('num_previous_med_inspections' = n())
+         summarise('num_previous_med_inspections' = n_distinct(inspection_date.y))
 
        high <- historical %>% 
          filter(score >= 28) %>% 
          group_by(uid) %>% 
-         summarise('num_previous_high_inspections' = n())
+         summarise('num_previous_high_inspections' = n_distinct(inspection_date.y))
        
        closings <- historical %>% 
          filter(action %in% c('closed', 're_closed')) %>% 
          group_by(uid) %>% 
-         summarise('num_previous_closings' = n())
+         summarise('num_previous_closings' = n_distinct(inspection_date.y))
        
        
        
@@ -199,43 +199,7 @@ all_data <- all_data %>%
          merge(y = high, by = "uid", all.x = T) %>% 
          merge(y = closings, by = "uid", all.x = T)
       
-      # #The number of previous inspections with score < 14      
-      # low <- historical %>%
-      #   filter(score < 14) %>%
-      #   group_by(id) %>%
-      #   summarise(count = n_distinct(uid))
-      # 
-      # restaurant_data$num_previous_low_inspections <-low$count[match(restaurant_data$id, 
-      #                                                                low$id)]
-      # 
-      # #The number of previous inspections with score >= 14 and < 28
-      # medium <- historical %>%
-      #   filter(score >=14 & score < 28) %>%
-      #   group_by(id) %>%
-      #   summarise(count = n_distinct(uid))
-      # 
-      # restaurant_data$num_previous_med_inspections <-medium$count[match(restaurant_data$id, 
-      #                                                                medium$id)]
-      # 
-      # #The number of previous inspections with score >= 28
-      # high <- historical %>%
-      #   filter(score >= 28) %>%
-      #   group_by(id) %>%
-      #   summarise(count = n_distinct(uid))
-      # 
-      # restaurant_data$num_previous_high_inspections <-high$count[match(restaurant_data$id, 
-      #                                                                   high$id)]
-      # 
-      # #The number of previous inspections which resulted in closing or re-closing 
-      # #(call this num_previous_closings)
-      # closings <-historical %>%
-      #   filter(action %in% c("closed", "re_closed")) %>%
-      #   group_by(id) %>%
-      #   summarise(count = n_distinct(uid))
-      # 
-      # restaurant_data$num_previous_closings <-closings$count[match(restaurant_data$id, 
-      #                                                                  closings$id)]
-    
+      
       #Hint: Make sure to replace NA values with zeros for the historical features for 
       #restaurants that have no prior inspections.
       
@@ -261,6 +225,10 @@ all_data <- all_data %>%
 ## only cuisine, borough, month, and weekday. 
 ## Compute the AUC of this model on the test dataset.
     
+    # change to factor variables
+    cols <- c('cuisine', 'borough', 'month', 'weekday', 'outcome')
+    restaurant_data <- restaurant_data %>% mutate_at(cols, funs(factor(.)))
+    
     #create training set 
     train <- filter(restaurant_data, inspection_year %in% c(2015,2016))
     
@@ -270,7 +238,77 @@ all_data <- all_data %>%
     #fit standard logistic regression model 
     str(train)
     
-      
+    #remove cuisines in test that are not in train
+    test <- test %>% filter(cuisine %in% train$cuisine)
     
+    # run logistic regression
+    log_model <- glm(outcome ~ cuisine + borough + month + weekday, data = train, family = 'binomial')
+    
+    # find predicted probabilities on test
+    test$predicted.probability <- predict(log_model, newdata = test, type = "response")
+    
+    # compute AUC
+    test.pred <- prediction(test$predicted.probability, test$outcome)
+    test.perf <- performance(test.pred, "auc")
+    cat('the auc score is', 100*test.perf@y.values[[1]], "\n")
+    
+## Fit a random forest model on train, predicting outcome as a function of cuisine,
+## borough, month, weekday, and the four historical features created in Step C. Use 1000
+## trees, but other settings can have default values. Compute the AUC of this model on the
+## 4 test dataset. How does the AUC of the random forest compare with the AUC of the
+## logistic regression model?
+    
+    # set seed
+    set.seed(1234)
+    
+    # run random forest model
+    rf_model <- randomForest(outcome ~ cuisine + borough + month +
+                               weekday + num_previous_low_inspections + 
+                               num_previous_med_inspections + num_previous_high_inspections + 
+                               num_previous_closings, ntree = 1000 , data = train)
+    
+    # find predicted probabilities on test
+    test$predicted.probability <- predict(rf_model, newdata = test, type = "prob")[,2]
+    
+    # compute AUC
+    test.pred <- prediction(test$predicted.probability, test$outcome)
+    test.perf <- performance(test.pred, "auc")
+    cat('the auc score is', 100*test.perf@y.values[[1]], "\n")
+
+##  Generate a precision plot that compares the performance of the logistic
+##  regression and random forest models on just the highest ranked inspections.
+##  Specifically,
+##    a. create a plot where the x-axis is the number of restaurants, ranked from highest
+##    model-estimated probability of the outcome to lowest model-estimated probability of the outcome, ##    and the y-axis displays the corresponding model precision (e.g.,
+##    if you were to use the random forest model to rank all restaurants from most
+##    likely to have the outcome to least likely to have the outcome, then a point like
+##    (100, 0.3) would indicate that among the 100 highest-ranked restaurants, 30 of
+##    them had the outcome). This is just like the performance plot you made in
+##    Homework 3, except the x-axis should be on the absolute scale (not percent
+##    scale), and the y-axis should display precision instead of recall.
+  
+    # create prediction variable
+    test <- test %>% mutate(prediction = case_when(
+      predicted.probability < 0.5 ~ F,
+      predicted.probability >= 0.5 ~ T))
+    
+    # confusion table
+    confusion <- table(test$prediction, test$outcome)
+    
+    # precision plot data
+    plot.data <- test %>% arrange(desc(predicted.probability)) %>% 
+      mutate(numrests = row_number(), 
+             precision = confusion[2,2] / sum(confusion[2,2], confusion[2,1])) %>% 
+      select(numrests, precision)
+    
+    # precision plot
+    p <- ggplot(data = plot.data, aes(x = stops, y = precision)) +
+      geom_line() + 
+      scale_x_log10('\nPercent of stops', 
+                    limits=c(0.003, 1), 
+                    breaks=c(.003,.01,.03,.1,.3,1), 
+                    labels=c('0.3%','1%','3%','10%','30%','100%')) +
+      scale_y_continuous("Percent of stops w/ frisk", limits=c(0, 1), labels=scales::percent) +
+      theme_bw()
     
   
