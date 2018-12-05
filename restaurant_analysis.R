@@ -101,7 +101,7 @@ all_data <- all_data %>%
     ATEST <- filter(all_data, id == 30112340)
     #in our case, those inspection_type with .II indicates initial inspection 
     #In other words, filter on initial inspections
-    ATEST <- filter(ATEST, grepl(pattern = ".II$", ATEST$inspection_type))
+    ATEST <- filter(ATEST, inspection_type == 'CI.II')
     
     #filter on years 2015, 2016, 2017 
     ATEST <- filter(ATEST, inspection_year %in% c(2015, 2016, 2017))
@@ -123,8 +123,8 @@ all_data <- all_data %>%
     
     #### ACTUAL CREATION OF restaurant_data ####
     #in our case, those inspection_type with .II indicates initial inspection 
-    #In other words, filter on initial inspections
-    restaurant_data <- filter(all_data, grepl(pattern = ".II$", all_data$inspection_type))
+    #In other words, filter on cycle initial inspections
+    restaurant_data <- filter(all_data, inspection_type == 'CI.II')
     
     #filter on years 2015, 2016, 2017 
     restaurant_data <- filter(restaurant_data, inspection_year %in% c(2015, 2016, 2017))
@@ -290,19 +290,7 @@ all_data <- all_data %>%
 ##    b. There should be two curves on this plot, one for logistic regression and one for
 ##    random forest. Restrict the x-axis to be a reasonable range, say from 100 to 2000
 ##    inspections.
-    
 
-    
-    # create prediction variable for each model
-    test <- test %>% mutate(
-      prediction.log = case_when(
-        predicted.probability.log < 0.5 ~ 0,
-        predicted.probability.log >= 0.5 ~ 1), 
-      
-      prediction.rf = case_when(
-        predicted.probability.rf < 0.5 ~ 0,
-        predicted.probability.rf >= 0.5 ~ 1)
-    )
     
     
     # log precision plot data
@@ -310,12 +298,11 @@ all_data <- all_data %>%
       arrange(desc(predicted.probability.log)) %>% 
       mutate(numrests = row_number()) %>% 
       filter(numrests %in% 1:2000) %>% 
-      select(numrests, outcome, prediction.log)
+      select(numrests, outcome)
     
     for (i in 1:2000) {
       plot.data.log$precision.log[i] <- 
-        sum(plot.data.log$outcome[1:i] == 1 & plot.data.log$prediction.log[1:i] == 1) /
-        sum(plot.data.log$prediction.log[1:i] == 1)
+        sum(plot.data.log$outcome[1:i] == 1) / plot.data.log$numrests[i]
     }
     
     
@@ -324,78 +311,32 @@ all_data <- all_data %>%
       arrange(desc(predicted.probability.rf)) %>% 
       mutate(numrests = row_number()) %>% 
       filter(numrests %in% 1:2000) %>% 
-      select(numrests, outcome, prediction.rf)
+      select(numrests, outcome)
     
     for (i in 1:2000) {
       plot.data.rf$precision.rf[i] <- 
-        sum(plot.data.rf$outcome[1:i] == 1 & plot.data.rf$prediction.rf[1:i] == 1) /
-        sum(plot.data.rf$prediction.rf[1:i] == 1)
+        sum(plot.data.rf$outcome[1:i] == 1) / plot.data.rf$numrests[i]
     }
     
     
     # combine results for 100 to 2000 restaurants
-    plot.data <- merge(x = plot.data.log, y = plot.data.rf, by = 'numrests') %>% 
+    plot.data <- 
+      merge(x = plot.data.log, y = plot.data.rf, by = 'numrests') %>% 
       select(numrests, precision.log, precision.rf) %>% 
       filter(numrests %in% 100:2000)
     
     
     # precision plot
-    p <- ggplot(data = plot.data, aes(x = numrests, y = precision.rf)) +
-      geom_line() + 
-      # scale_x_log10('\nPercent of stops', 
-      #               limits=c(0.003, 1), 
-      #               breaks=c(.003,.01,.03,.1,.3,1), 
-      #               labels=c('0.3%','1%','3%','10%','30%','100%')) +
-      # scale_y_continuous("Percent of stops w/ frisk", limits=c(0, 1), labels=scales::percent) +
-      theme_bw()
-    
-    ggsave(plot = p, file = 'precision_plot.pdf', height = 5, width = 5)
-    
-    
-    
-    
-    
+    p <- ggplot(data = plot.data, aes(x = numrests)) +
+      geom_line(aes(y = precision.log, colour = 'Logistic Regression')) + 
+      geom_line(aes(y = precision.rf, colour = 'Random Forests')) +
+      labs(title = 'Model Precision for High Ranking Inspections', 
+           x = 'Number of Restaurants (ranked high to low)',
+           y = 'Precision',
+           colour = 'Model')
+
+    # save plot
+    #ggsave(plot = p, file = 'precision_plot.pdf', height = 4, width = 6)
     
 
-    
-    
-    ## x axis the number of rows 
-    
-   xaxis <-  test %>%
-      group_by(predicted.probability.rf) %>%
-      summarise(n=n())
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-
-    
-    # confusion table
-    confusion <- table(test$prediction.rf, test$outcome)
-    
-    
-    plot.data <- test %>% arrange(desc(predicted.probability.log)) %>% 
-      dplyr::mutate(numrests = row_number(), percent.outcome = cumsum(arrested)/sum(arrested),
-                    highscore = numstops/n()) %>% select(stops, percent.outcome)
-    
-    # create and save plot
-    theme_set(theme_bw())
-    p <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
-    p <- p + geom_line()
-    p <- p + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
-                           labels=c('0.3%','1%','3%','10%','30%','100%'))
-    p <- p + scale_y_continuous("Percent of arrested individuals", limits=c(0, 1), labels=scales::percent)
-    p
-    
-
-    
   
