@@ -245,10 +245,10 @@ all_data <- all_data %>%
     log_model <- glm(outcome ~ cuisine + borough + month + weekday, data = train, family = 'binomial')
     
     # find predicted probabilities on test
-    test$predicted.probability <- predict(log_model, newdata = test, type = "response")
+    test$predicted.probability.log <- predict(log_model, newdata = test, type = "response")
     
     # compute AUC
-    test.pred <- prediction(test$predicted.probability, test$outcome)
+    test.pred <- prediction(test$predicted.probability.log, test$outcome)
     test.perf <- performance(test.pred, "auc")
     cat('the auc score is', 100*test.perf@y.values[[1]], "\n")
     
@@ -268,10 +268,10 @@ all_data <- all_data %>%
                                num_previous_closings, ntree = 1000 , data = train)
     
     # find predicted probabilities on test
-    test$predicted.probability <- predict(rf_model, newdata = test, type = "prob")[,2]
+    test$predicted.probability.rf <- predict(rf_model, newdata = test, type = "prob")[,2]
     
     # compute AUC
-    test.pred <- prediction(test$predicted.probability, test$outcome)
+    test.pred <- prediction(test$predicted.probability.rf, test$outcome)
     test.perf <- performance(test.pred, "auc")
     cat('the auc score is', 100*test.perf@y.values[[1]], "\n")
 
@@ -287,13 +287,48 @@ all_data <- all_data %>%
 ##    Homework 3, except the x-axis should be on the absolute scale (not percent
 ##    scale), and the y-axis should display precision instead of recall.
   
+    ## x axis the number of rows 
+    
+   xaxis <-  test %>%
+      group_by(predicted.probability.rf) %>%
+      summarise(n=n())
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     # create prediction variable
-    test <- test %>% mutate(prediction = case_when(
-      predicted.probability < 0.5 ~ F,
-      predicted.probability >= 0.5 ~ T))
+    test <- test %>% mutate(prediction.log = case_when(
+      predicted.probability.log < 0.5 ~ F,
+      predicted.probability.log >= 0.5 ~ T), prediction.rf = case_when(
+        predicted.probability.rf < 0.5 ~ F,
+        predicted.probability.rf >= 0.5 ~ T)
+      )
     
     # confusion table
-    confusion <- table(test$prediction, test$outcome)
+    confusion <- table(test$prediction.log, test$outcome)
+    
+    
+    plot.data <- test %>% arrange(desc(predicted.probability.log)) %>% 
+      dplyr::mutate(numrests = row_number(), percent.outcome = cumsum(arrested)/sum(arrested),
+                    highscore = numstops/n()) %>% select(stops, percent.outcome)
+    
+    # create and save plot
+    theme_set(theme_bw())
+    p <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
+    p <- p + geom_line()
+    p <- p + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
+                           labels=c('0.3%','1%','3%','10%','30%','100%'))
+    p <- p + scale_y_continuous("Percent of arrested individuals", limits=c(0, 1), labels=scales::percent)
+    p
     
     # precision plot data
     plot.data <- test %>% arrange(desc(predicted.probability)) %>% 
